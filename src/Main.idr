@@ -1,10 +1,15 @@
 module Main
 
-import Hardware.MOS6502.Emu
+import Kastely
 
 import JS.Util
+import JS.Buffer
+
+-- %foreign "javascript:lambda:(s) => resolveFile(s)"
+-- resolveFile : String -> IO ArrayBuffer
 
 main : IO ()
 main = do
-  consoleLog "Hello World"
-  -- setTimeout (consoleLog "And hello again!") 1000
+  -- n <- initialize resolveFile
+  -- consoleLog $ show n
+  pure ()

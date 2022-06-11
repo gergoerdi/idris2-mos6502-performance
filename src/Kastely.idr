@@ -7,6 +7,7 @@ import Control.MonadRec
 import JS.Buffer
 import JS.Array
 import Data.Maybe
+import JS.Util
 
 record Memory (m : Type -> Type) (a : Type) where
   constructor MkMemory
@@ -36,10 +37,12 @@ HasIO m => MonadMachine (Memory m) where
     mem <- MkMemory ask
     writeIO mem (cast addr) v
 
+%nomangle
 public export
 initialize : (String -> IO ArrayBuffer) -> IO Nat
 initialize loadFile = do
-  mem <- arrayDataFrom . the UInt8Array . cast =<< loadFile "data/program.dat"
+  mem <- arrayDataFrom . cast {to = UInt8Array} =<< loadFile "data/program.dat"
+
   cpu <- new 0x438b
   let runCPU : ReaderT CPU (Memory IO) a -> IO a
       runCPU = runReaderT mem . runMemory . runReaderT cpu
@@ -51,9 +54,11 @@ initialize loadFile = do
   -- let run = runCPU $ loop 0
 
   let run = runCPU $ tailRecM {rel = dummy} () 0 acc $ \(), cnt =>
-          getReg pc >>= \pc => case pc of
-            0x640b => pure (Done cnt)
-            _ => step *> pure (Cont () () $ cnt + 1)
+          getReg pc >>= \pc => do
+            consoleLog $ show pc
+            case pc of
+              0x640b => pure (Done cnt)
+              _ => step *> pure (Cont () () $ cnt + 1)
 
   run
   where
