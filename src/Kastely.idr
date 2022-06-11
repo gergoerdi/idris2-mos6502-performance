@@ -53,13 +53,28 @@ initialize loadFile = do
   --       _ => step *> loop (cnt + 1)
   -- let run = runCPU $ loop 0
 
-  let run = runCPU $ tailRecM {rel = dummy} () 0 acc $ \(), cnt =>
-          getReg pc >>= \pc => do
-            consoleLog $ show pc
-            case pc of
-              0x640b => pure (Done cnt)
-              _ => step *> pure (Cont () () $ cnt + 1)
-
+  let run = runCPU $ tailRecM {rel = dummy} () 0 acc $ \(), cnt => do
+          let continue = pure $ Cont () () $ cnt + 1
+          getReg pc >>= \pc' => do
+            -- consoleLog $ show pc'
+            case pc' of
+              0x640b => do -- Menu
+                let cmd = 0x07
+                writeMem 0x680d cmd
+                setReg regA cmd
+                rts
+                continue
+              0x4a07 => do -- Check disk
+                setReg pc 0x40bb
+                continue
+              0xcc03 => do -- Load from disk
+                pure $ Done cnt
+              0x4679 => do -- Show message from 0xcb4a, length 36
+                rts
+                continue
+              _ => do
+                step
+                continue
   run
   where
     dummy : () -> () -> Type
