@@ -1,43 +1,25 @@
 module Kastely
 
 import Hardware.MOS6502.Emu
-import Control.Monad.Reader
-import Control.MonadRec
 
 import JS.Buffer
 import JS.Array
 import Data.Maybe
 import JS.Util
 
-record Memory (m : Type -> Type) (a : Type) where
-  constructor MkMemory
-  1 runMemory : ReaderT (Array Byte) m a
+0 Memory : Type
+Memory = Array Byte
 
-Functor m => Functor (Memory m) where
-  map f = { runMemory $= map f }
+unMaybe : Maybe a -> a
+unMaybe (Just v) = v
+unMaybe Nothing  = assert_total $ idris_crash "unMaybe"
 
-Applicative m => Applicative (Memory m) where
-  pure x = MkMemory $ pure x
-  ff <*> fx = MkMemory $ runMemory ff <*> runMemory fx
+toMachine : Memory -> Machine
+toMachine mem =
+  MkMachine (\addr => unMaybe <$> readIO mem (cast addr))
+            (\addr,v => writeIO mem (cast addr) v)
 
-Monad m => Monad (Memory m) where
-  m >>= k = MkMemory $ runMemory m >>= (runMemory . k)
-
-MonadRec m => MonadRec (Memory m) where
-  tailRecM x ini acc f = MkMemory $ tailRecM x ini acc $ \x => \st => runMemory (f x st)
-
-HasIO m => HasIO (Memory m) where
-  liftIO act = MkMemory $ liftIO act
-
-HasIO m => MonadMachine (Memory m) where
-  readMem addr = do
-    mem <- MkMemory ask
-    assert_total $ fromMaybe (idris_crash "readMem") <$> readIO mem (cast addr)
-  writeMem addr v = do
-    mem <- MkMemory ask
-    writeIO mem (cast addr) v
-
-single : (HasIO m) => Nat -> ReaderT CPU (Memory m) (Maybe Nat)
+single : Machine => CPU => Nat-> IO (Maybe Nat)
 single cnt = do
   getReg pc >>= \pc' => do
     -- consoleLog $ show pc'
@@ -60,14 +42,13 @@ single cnt = do
         step
         pure Nothing
 
-loop : (HasIO m) => ReaderT CPU (Memory m) Nat
-loop = go 0
-  where
-    go : Nat -> ReaderT CPU (Memory m) Nat
-    go cnt = do
-      Nothing <- single cnt
-        | Just v => pure v
-      go (cnt + 1)
+loop : Machine => CPU => IO Nat
+loop = fromPrim $ go 0
+  where go : Nat -> PrimIO Nat
+        go cnt w =
+          let MkIORes Nothing w2 := toPrim (single cnt) w
+                | MkIORes (Just v) w2 => MkIORes v w2
+           in go (cnt + 1) w2
 
 %nomangle
 public export
@@ -76,7 +57,6 @@ initialize loadFile = do
   mem <- arrayDataFrom . cast {to = UInt8Array} =<< loadFile "data/program.dat"
 
   cpu <- new 0x438b
-  let runCPU : ReaderT CPU (Memory IO) a -> IO a
-      runCPU = runReaderT mem . runMemory . runReaderT cpu
+  let m = toMachine mem
 
-  runCPU loop
+  loop
