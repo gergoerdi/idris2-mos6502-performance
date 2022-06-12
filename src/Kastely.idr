@@ -2,9 +2,11 @@ module Kastely
 
 import Hardware.MOS6502.Emu
 
+import Data.Maybe
+import Data.String
+
 import JS.Buffer
 import JS.Array
-import Data.Maybe
 import JS.Util
 
 0 Memory : Type
@@ -25,19 +27,27 @@ single cnt = do
     -- consoleLog $ show pc'
     case pc' of
       0x640b => do -- Menu
+        consoleLog "Menu"
         let cmd = 0x07
         writeMem 0x680d cmd
         setReg regA cmd
         rts
         pure Nothing
       0x40a7 => do -- Check disk
+        consoleLog "Check disk"
         setReg pc 0x40bb
         pure Nothing
       0xcc03 => do -- Load from disk
-        pure (Just cnt)
-      0x4679 => do -- Show message from 0xcb4a, length 36
+        x <- getReg regX
+        y <- getReg regY
+        a <- getReg regA
+        consoleLog $ unwords ["Load from disk", show x, show y]
         rts
         pure Nothing
+        -- pure (Just cnt)
+      0x4679 => do -- Show message from 0xcb4a, length 36
+        rts
+        pure $ Just cnt
       _ => do
         step
         pure Nothing
