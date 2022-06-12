@@ -30,7 +30,7 @@ single cnt = do
         setReg regA cmd
         rts
         pure Nothing
-      0x4a07 => do -- Check disk
+      0x40a7 => do -- Check disk
         setReg pc 0x40bb
         pure Nothing
       0xcc03 => do -- Load from disk
