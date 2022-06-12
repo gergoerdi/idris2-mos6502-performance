@@ -1,4 +1,4 @@
-function toArrayBuffer(base64) {
+function base64ToArrayBuffer(base64) {
     var binary_string = window.atob(base64);
     var len = binary_string.length;
     var bytes = new Uint8Array(len);
