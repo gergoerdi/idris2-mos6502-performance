@@ -1,6 +1,7 @@
 module Kastely
 
 import Hardware.MOS6502.Emu
+import Kastely.Text
 
 import Data.Maybe
 import Data.String
@@ -17,12 +18,29 @@ unMaybe (Just v) = v
 unMaybe Nothing  = assert_total $ idris_crash "unMaybe"
 
 toMachine : Memory -> Machine
-toMachine mem =
-  MkMachine (\addr => unMaybe <$> readIO mem (cast addr))
-            (\addr,v => writeIO mem (cast addr) v)
+toMachine mem = MkMachine
+  { readMem_  = \addr => unMaybe <$> readIO mem (cast addr)
+  , writeMem_ = \addr => writeIO mem (cast addr)
+  }
 
-single : Machine => CPU => Nat-> IO (Maybe Nat)
-single cnt = do
+untilIO : acc -> (acc -> IO (Either acc a)) -> IO a
+untilIO acc0 step = fromPrim $ go acc0
+  where
+    go : acc -> PrimIO a
+    go acc w =
+      let MkIORes (Left acc') w' = toPrim (step acc) w
+            | MkIORes (Right res) w' => MkIORes res w'
+      in go acc' w'
+
+copyToMemory : Machine => Memory -> Addr -> Addr -> IO ()
+copyToMemory from start target = untilIO 0 $ \i => do
+  Just v <- readIO from (cast $ start + i)
+    | Nothing => pure $ Right ()
+  writeMem (target + i) v
+  pure $ Left $ i + 1
+
+single : Machine => CPU => (String -> IO ArrayBuffer) -> IO (Maybe ())
+single loadFile = do
   getReg pc >>= \pc' => do
     -- consoleLog $ show pc'
     case pc' of
@@ -41,24 +59,20 @@ single cnt = do
         x <- getReg regX
         y <- getReg regY
         a <- getReg regA
-        consoleLog $ unwords ["Load from disk", show x, show y]
+        let fn = "data/disks/" <+> pack (map toChar [x, y]) <+> ".dat"
+        consoleLog $ unwords ["Load from disk", fn]
+        buf <- arrayDataFrom . cast {to = UInt8Array} =<< loadFile fn
+        addr0 <- toAddr <$> (unMaybe <$> readIO buf 0) <*> (unMaybe <$> readIO buf 1)
+        copyToMemory buf 2 addr0
         rts
         pure Nothing
-        -- pure (Just cnt)
       0x4679 => do -- Show message from 0xcb4a, length 36
+        consoleLog "Short message"
         rts
-        pure $ Just cnt
+        pure $ Just ()
       _ => do
         step
         pure Nothing
-
-loop : Machine => CPU => IO Nat
-loop = fromPrim $ go 0
-  where go : Nat -> PrimIO Nat
-        go cnt w =
-          let MkIORes Nothing w2 := toPrim (single cnt) w
-                | MkIORes (Just v) w2 => MkIORes v w2
-           in go (cnt + 1) w2
 
 %nomangle
 public export
@@ -69,4 +83,7 @@ initialize loadFile = do
   cpu <- new 0x438b
   let m = toMachine mem
 
-  loop
+  untilIO 0 $ \cnt => do
+    Nothing <- single loadFile
+      | Just _ => pure $ Right cnt
+    pure $ Left $ cnt + 1
