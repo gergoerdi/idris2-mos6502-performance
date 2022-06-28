@@ -6,32 +6,18 @@ import Kastely.Text
 import Data.Maybe
 import Data.String
 
+import Data.Array.Fast
 import JS.Buffer
 import JS.Array
 import JS.Util
 
--- reads a value at the given index from a byte array
--- I reimplemented this here, because the version from
--- the dom library returns a Maybe (something we don't need
--- here), and has a call to `<$>`, which will conjure a
--- Monad IO record (something I should fix).
-%foreign "javascript:lambda:(arr,n,w) => arr[n]"
-prim__readArr : Array Byte -> Bits32 -> PrimIO Byte
-
--- writes a value to a mutable array
-%foreign "javascript:lambda:(arr,n,v,w) => { arr[n] = v }"
-prim__writeArr : Array Byte -> Bits32 -> Byte -> PrimIO ()
-
 0 Memory : Type
 Memory = Array Byte
 
-readMemory : Memory -> Addr -> IO Byte
-readMemory mem addr = fromPrim $ prim__readArr mem (cast addr)
-
 toMachine : Memory -> Machine
 toMachine mem = MkMachine
-  { readMem_  = \addr => readMemory mem addr
-  , writeMem_ = \addr => writeIO mem (cast addr)
+  { readMem_  = \addr => readArray mem (cast addr)
+  , writeMem_ = \addr => writeArray mem (cast addr)
   }
 
 untilIO : acc -> (acc -> IO (Either acc a)) -> IO a
@@ -50,7 +36,7 @@ copyToMemory from start target = do
     let src = start + i
         dest = target + i
     if src >= n then pure $ Right () else do
-      v <- readMemory from src
+      v <- readArray from (cast src)
       writeMem dest v
       pure $ Left $ i + 1
 
@@ -77,7 +63,7 @@ single loadFile = do
         let fn = "data/disks/" <+> pack (map toChar [x, y]) <+> ".dat"
         consoleLog $ unwords ["Load from disk", fn]
         buf <- arrayDataFrom . cast {to = UInt8Array} =<< loadFile fn
-        addr0 <- toAddr <$> readMemory buf 0 <*> (readMemory buf 1)
+        addr0 <- toAddr <$> readArray buf 0 <*> readArray buf 1
         copyToMemory buf 2 addr0
         rts
         pure Nothing
